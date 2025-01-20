@@ -2,18 +2,17 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "docker.private.registry.com:5000/test"
-        DOCKER_CREDENTIALS_ID = "docker-credentials"
-        KUBECONFIG_CREDENTIALS_ID = "kubeconfig-credentials"
+        DOCKER_IMAGE = "your-docker-image-name"
+        DOCKER_REGISTRY = "your-docker-registry"
+        OWASP_ZAP_DOCKER_IMAGE = "owasp/zap2docker-stable"
     }
 
     stages {
         stage('Unit Test') {
             steps {
                 script {
-                    // Run unit tests
-                    sh 'echo "Running unit tests..."'
-                    // Add your unit test command here, e.g., `mvn test` or `npm test`
+                    // Menjalankan unit test
+                    sh 'pytest'
                 }
             }
         }
@@ -22,12 +21,9 @@ pipeline {
             steps {
                 script {
                     // Build Docker image
-                    sh 'docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .'
-                    // Push Docker image
-                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin docker.private.registry.com:5000'
-                        sh 'docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}'
-                    }
+                    sh 'docker build -t $DOCKER_REGISTRY/$DOCKER_IMAGE .'
+                    // Push Docker image ke registry
+                    sh 'docker push $DOCKER_REGISTRY/$DOCKER_IMAGE'
                 }
             }
         }
@@ -35,9 +31,8 @@ pipeline {
         stage('OWASP') {
             steps {
                 script {
-                    // Run OWASP ZAP scan
-                    sh 'echo "Running OWASP ZAP scan..."'
-                    // Add your OWASP ZAP scan command here
+                    // Menjalankan OWASP ZAP untuk scanning
+                    sh 'docker run -t owasp/zap2docker-stable zap-baseline.py -t http://your-application-url'
                 }
             }
         }
@@ -45,9 +40,8 @@ pipeline {
         stage('Security Container or Library Vulnerabilities') {
             steps {
                 script {
-                    // Run security scan for container or library vulnerabilities
-                    sh 'echo "Running security scan for container or library vulnerabilities..."'
-                    // Add your security scan command here, e.g., `trivy image ${DOCKER_IMAGE}:${BUILD_NUMBER}`
+                    // Menjalankan scanning untuk vulnerabilities
+                    sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image $DOCKER_REGISTRY/$DOCKER_IMAGE'
                 }
             }
         }
@@ -55,10 +49,8 @@ pipeline {
         stage('Deployment') {
             steps {
                 script {
-                    // Deploy to Kubernetes
-                    withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS_ID}", variable: 'KUBECONFIG')]) {
-                        sh 'kubectl apply -f k8s/deployment.yaml'
-                    }
+                    // Menjalankan deployment
+                    sh 'kubectl apply -f deployment.yaml'
                 }
             }
         }
@@ -66,6 +58,7 @@ pipeline {
 
     post {
         always {
+            // Membersihkan workspace setelah build selesai
             cleanWs()
         }
     }
